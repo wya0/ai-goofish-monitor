@@ -2,6 +2,8 @@ name: Sync Fork
 
 permissions:
     contents: write
+    pull-requests: write
+    workflows: write  # 这是解决问题的关键！
 
 on:
     schedule:
@@ -45,5 +47,6 @@ jobs:
                   echo "Please check the logs and consider manual sync if needed."
 
                   exit 1
+
 
 
