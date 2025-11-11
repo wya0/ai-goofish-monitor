@@ -37,7 +37,7 @@
 克隆本项目到本地:
 
 ```bash
-git clone https://github.com/dingyufei615/ai-goofish-monitor
+git clone https://github.com/Usagi-org/ai-goofish-monitor
 cd ai-goofish-monitor
 ```
 
@@ -75,7 +75,7 @@ pip install -r requirements.txt
     | `GOTIFY_URL` | (可选) Gotify 服务地址。 | 否 | 例如 `https://push.example.de`。 |
     | `GOTIFY_TOKEN` | (可选) Gotify 应用的 Token。 | 否 | |
     | `BARK_URL` | (可选) [Bark](https://bark.day.app/) 的推送地址。 | 否 | 例如 `https://api.day.app/your_key`。如果留空，将不发送 Bark 通知。 |
-    | `WX_BOT_URL` | (可选) 企业微信群机器人的 Webhook 地址。 | 否 | 如果留空，将不会发送企业微信通知。 |
+    | `WX_BOT_URL` | (可选) 企业微信群机器人的 Webhook 地址。 | 否 | 如果留空，将不会发送企业微信通知。注意：在 `.env` 文件中配置此值时，请确保 URL 地址用双引号包围，否则可能导致配置不生效。 |
     | `WEBHOOK_URL` | (可选) 通用 Webhook 的 URL 地址。 | 否 | 如果留空，将不发送通用 Webhook 通知。 |
     | `WEBHOOK_METHOD` | (可选) Webhook 请求方法。 | 否 | 支持 `GET` 或 `POST`，默认为 `POST`。 |
     | `WEBHOOK_HEADERS` | (可选) Webhook 的自定义请求头。 | 否 | 必须是有效的 JSON 字符串，例如 `'{"Authorization": "Bearer xxx"}'`。 |
@@ -87,6 +87,7 @@ pip install -r requirements.txt
     | `RUN_HEADLESS` | 是否以无头模式运行爬虫浏览器。 | 否 | 默认为 `true`。在本地调试遇到验证码时可设为 `false` 手动处理。**Docker部署时必须为 `true`**。 |
     | `AI_DEBUG_MODE` | 是否开启AI调试模式。 | 否 | 默认为 `false`。开启后会在控制台打印详细的AI请求和响应日志。 |
     | `SKIP_AI_ANALYSIS` | 是否跳过AI分析并直接发送通知。 | 否 | 默认为 `false`。设置为 `true` 时，所有爬取到的商品将直接发送通知而不经过AI分析。 |
+    | `ENABLE_THINKING` | 是否启用enable_thinking参数。 | 否 | 默认为 `false`。某些AI模型需要此参数，而有些则不支持。如果遇到"Invalid JSON payload received. Unknown name "enable_thinking""错误，请尝试设置为 `false`。 |
     | `SERVER_PORT` | Web UI服务的运行端口。 | 否 | 默认为 `8000`。 |
     | `WEB_USERNAME` | Web界面登录用户名。 | 否 | 默认为 `admin`。生产环境请务必修改。 |
     | `WEB_PASSWORD` | Web界面登录密码。 | 否 | 默认为 `admin123`。生产环境请务必修改为强密码。 |
@@ -148,7 +149,7 @@ python web_server.py
 2. **克隆项目并配置**:
 
     ```bash
-    git clone https://github.com/dingyufei615/ai-goofish-monitor
+    git clone https://github.com/Usagi-org/ai-goofish-monitor
     cd ai-goofish-monitor
     ```
 
@@ -285,24 +286,22 @@ WEB_PASSWORD=admin123
 
 - [superboyyy/xianyu_spider](https://github.com/superboyyy/xianyu_spider)
 
-以及感谢LinuxDo相关佬友的脚本贡献
+以及感谢LinuxDo相关人员的脚本贡献
 
 - [@jooooody](https://linux.do/u/jooooody/summary)
 
-以及感谢 [LinuxDo](https://linux.do/) 社区，希望L站越来越好。
+以及感谢 [LinuxDo](https://linux.do/) 社区。
 
-以及感谢ClaudeCode/Aider/Gemini 工具解放双手，代码写起来飞一般的感觉～
+以及感谢 ClaudeCode/ModelScope/Gemini 等模型/工具，解放双手 体验Vibe Coding的快乐。
 
-## Support & Sponsoring
+## 体会
+本项目 90%+ 的代码都由AI生成，包括 ISSUE 中涉及的 PR 。
 
-如果该项目对您有帮助，请考虑 buy a coffe for me , 非常感谢您的支持！
+Vibe Coding 的可怕之处在于如果不过多的参与项目建设，对AI生成的代码没有进行细致的review，没有思考过AI为什么这么写，盲目的通过跑测试用例验证功能可用性只会导致项目变成一个黑盒。
 
-<table>
-  <tr>
-    <td><img src="static/zfb_support.jpg" width="200" alt="Alipay" /></td>
-    <td><img src="static/wx_support.png" width="200" alt="WeChat Pay" /></td>
-  </tr>
-</table>
+同样再用AI对AI生成的代码进行code review时，就像是用AI来验证另一个AI的回答是不是AI，陷入了自我证明的困境之中，所以AI可以辅助分析，但不应该成为真相的仲裁者。
+
+AI是万能的，能帮助开发者解决99%的编码问题，AI同样不是万能，解决的每一个问题都需要开发者去验证思考一遍，AI是辅助，AI产出的内容也只能是辅助。
 
 ## ⚠️ 注意事项
 
@@ -312,4 +311,6 @@ WEB_PASSWORD=admin123
 - 项目作者及贡献者不对因使用本软件而导致的任何直接、间接、附带或特殊的损害或损失承担责任。
 - 如需了解更多详细信息，请查看 [免责声明](DISCLAIMER.md) 文件。
 
-[![Star History Chart](https://api.star-history.com/svg?repos=dingyufei615/ai-goofish-monitor&type=Date)](https://star-history.com/#dingyufei615/ai-goofish-monitor&Date)
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Usagi-org/ai-goofish-monitor&type=Date)](https://www.star-history.com/#Usagi-org/ai-goofish-monitor&Date)

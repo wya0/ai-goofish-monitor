@@ -10,6 +10,7 @@ load_dotenv()
 # --- File Paths & Directories ---
 STATE_FILE = "xianyu_state.json"
 IMAGE_SAVE_DIR = "images"
+CONFIG_FILE = "config.json"
 os.makedirs(IMAGE_SAVE_DIR, exist_ok=True)
 
 # 任务隔离的临时图片目录前缀
@@ -29,6 +30,8 @@ GOTIFY_URL = os.getenv("GOTIFY_URL")
 GOTIFY_TOKEN = os.getenv("GOTIFY_TOKEN")
 BARK_URL = os.getenv("BARK_URL")
 WX_BOT_URL = os.getenv("WX_BOT_URL")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 WEBHOOK_METHOD = os.getenv("WEBHOOK_METHOD", "POST").upper()
 WEBHOOK_HEADERS = os.getenv("WEBHOOK_HEADERS")
@@ -41,6 +44,8 @@ LOGIN_IS_EDGE = os.getenv("LOGIN_IS_EDGE", "false").lower() == "true"
 RUNNING_IN_DOCKER = os.getenv("RUNNING_IN_DOCKER", "false").lower() == "true"
 AI_DEBUG_MODE = os.getenv("AI_DEBUG_MODE", "false").lower() == "true"
 SKIP_AI_ANALYSIS = os.getenv("SKIP_AI_ANALYSIS", "false").lower() == "true"
+ENABLE_THINKING = os.getenv("ENABLE_THINKING", "false").lower() == "true"
+ENABLE_RESPONSE_FORMAT = os.getenv("ENABLE_RESPONSE_FORMAT", "true").lower() == "true"
 
 # --- Headers ---
 IMAGE_DOWNLOAD_HEADERS = {
@@ -80,3 +85,16 @@ if not client:
 # 检查关键配置
 if not all([BASE_URL, MODEL_NAME]) and 'prompt_generator.py' in sys.argv[0]:
     sys.exit("错误：请确保在 .env 文件中完整设置了 OPENAI_BASE_URL 和 OPENAI_MODEL_NAME。(OPENAI_API_KEY 对于某些服务是可选的)")
+
+def get_ai_request_params(**kwargs):
+    """
+    构建AI请求参数，根据ENABLE_THINKING和ENABLE_RESPONSE_FORMAT环境变量决定是否添加相应参数
+    """
+    if ENABLE_THINKING:
+        kwargs["extra_body"] = {"enable_thinking": False}
+    
+    # 如果禁用response_format，则移除该参数
+    if not ENABLE_RESPONSE_FORMAT and "response_format" in kwargs:
+        del kwargs["response_format"]
+    
+    return kwargs

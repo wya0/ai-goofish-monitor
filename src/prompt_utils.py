@@ -58,13 +58,22 @@ async def generate_criteria(user_description: str, reference_file_path: str) -> 
 
     print("正在调用AI生成新的分析标准，请稍候...")
     try:
+        from src.config import get_ai_request_params
+        
         response = await client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.5, # Lower temperature for more predictable structure
+            **get_ai_request_params(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5 # Lower temperature for more predictable structure
+            )
         )
         generated_text = response.choices[0].message.content
         print("AI已成功生成内容。")
+        
+        # 处理content可能为None的情况
+        if generated_text is None:
+            raise RuntimeError("AI返回的内容为空，请检查模型配置或重试。")
+        
         return generated_text.strip()
     except Exception as e:
         print(f"调用 OpenAI API 时出错: {e}")
@@ -92,7 +101,7 @@ async def update_config_with_new_task(new_task: dict, config_file: str = "config
         # 写回配置文件
         async with aiofiles.open(config_file, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(config_data, ensure_ascii=False, indent=2))
-        
+
         print(f"成功！新任务 '{new_task.get('task_name')}' 已添加到 {config_file} 并已启用。")
         return True
     except json.JSONDecodeError:

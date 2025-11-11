@@ -28,12 +28,15 @@ from src.config import (
     BARK_URL,
     PCURL_TO_MOBILE,
     WX_BOT_URL,
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_CHAT_ID,
     WEBHOOK_URL,
     WEBHOOK_METHOD,
     WEBHOOK_HEADERS,
     WEBHOOK_CONTENT_TYPE,
     WEBHOOK_QUERY_PARAMETERS,
     WEBHOOK_BODY,
+    ENABLE_RESPONSE_FORMAT,
     client,
 )
 from src.utils import convert_goofish_link, retry_on_failure
@@ -138,42 +141,42 @@ def validate_ai_response_format(parsed_response):
     """验证AI响应的格式是否符合预期结构"""
     required_fields = [
         "prompt_version",
-        "is_recommended", 
+        "is_recommended",
         "reason",
         "risk_tags",
         "criteria_analysis"
     ]
-    
+
     criteria_analysis_fields = [
         "model_chip",
-        "battery_health", 
+        "battery_health",
         "condition",
         "history",
         "seller_type",
         "shipping",
         "seller_credit"
     ]
-    
+
     seller_type_fields = [
         "status",
-        "persona", 
+        "persona",
         "comment",
         "analysis_details"
     ]
-    
+
     # 检查顶层字段
     for field in required_fields:
         if field not in parsed_response:
             safe_print(f"   [AI分析] 警告：响应缺少必需字段 '{field}'")
             return False
-    
+
     # 检查criteria_analysis字段
     criteria_analysis = parsed_response.get("criteria_analysis", {})
     for field in criteria_analysis_fields:
         if field not in criteria_analysis:
             safe_print(f"   [AI分析] 警告：criteria_analysis缺少字段 '{field}'")
             return False
-    
+
     # 检查seller_type的analysis_details
     seller_type = criteria_analysis.get("seller_type", {})
     if "analysis_details" in seller_type:
@@ -183,24 +186,24 @@ def validate_ai_response_format(parsed_response):
             if detail not in analysis_details:
                 safe_print(f"   [AI分析] 警告：analysis_details缺少字段 '{detail}'")
                 return False
-    
+
     # 检查数据类型
     if not isinstance(parsed_response.get("is_recommended"), bool):
         safe_print("   [AI分析] 警告：is_recommended字段不是布尔类型")
         return False
-    
+
     if not isinstance(parsed_response.get("risk_tags"), list):
         safe_print("   [AI分析] 警告：risk_tags字段不是列表类型")
         return False
-    
+
     return True
 
 
 @retry_on_failure(retries=3, delay=5)
 async def send_ntfy_notification(product_data, reason):
     """当发现推荐商品时，异步发送一个高优先级的 ntfy.sh 通知。"""
-    if not NTFY_TOPIC_URL and not WX_BOT_URL and not (GOTIFY_URL and GOTIFY_TOKEN) and not BARK_URL and not WEBHOOK_URL:
-        safe_print("警告：未在 .env 文件中配置任何通知服务 (NTFY_TOPIC_URL, WX_BOT_URL, GOTIFY_URL/TOKEN, BARK_URL, WEBHOOK_URL)，跳过通知。")
+    if not NTFY_TOPIC_URL and not WX_BOT_URL and not (GOTIFY_URL and GOTIFY_TOKEN) and not BARK_URL and not (TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID) and not WEBHOOK_URL:
+        safe_print("警告：未在 .env 文件中配置任何通知服务 (NTFY_TOPIC_URL, WX_BOT_URL, GOTIFY_URL/TOKEN, BARK_URL, TELEGRAM_BOT_TOKEN/CHAT_ID, WEBHOOK_URL)，跳过通知。")
         return
 
     title = product_data.get('商品标题', 'N/A')
@@ -314,7 +317,7 @@ async def send_ntfy_notification(product_data, reason):
         # 将消息转换为Markdown格式，使链接可点击
         lines = message.split('\n')
         markdown_content = f"## {notification_title}\n\n"
-        
+
         for line in lines:
             if line.startswith('手机端链接:') or line.startswith('电脑端链接:') or line.startswith('链接:'):
                 # 提取链接部分并转换为Markdown超链接
@@ -333,7 +336,7 @@ async def send_ntfy_notification(product_data, reason):
                     markdown_content += f"- {line}\n"
                 else:
                     markdown_content += "\n"
-        
+
         payload = {
             "msgtype": "markdown",
             "markdown": {
@@ -361,6 +364,56 @@ async def send_ntfy_notification(product_data, reason):
             safe_print(f"   -> 发送企业微信通知失败: {e}")
         except Exception as e:
             safe_print(f"   -> 发送企业微信通知时发生未知错误: {e}")
+
+    # --- 发送 Telegram 机器人通知 ---
+    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+        try:
+            safe_print(f"   -> 正在发送 Telegram 通知...")
+            
+            # 构建 Telegram API URL
+            telegram_api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            
+            # 格式化消息内容
+            telegram_message = f"🚨 <b>新推荐!</b>\n\n"
+            telegram_message += f"<b>{title[:50]}...</b>\n\n"
+            telegram_message += f"💰 价格: {price}\n"
+            telegram_message += f"📝 原因: {reason}\n"
+            
+            # 添加链接
+            if PCURL_TO_MOBILE:
+                mobile_link = convert_goofish_link(link)
+                telegram_message += f"📱 <a href='{mobile_link}'>手机端链接</a>\n"
+            telegram_message += f"💻 <a href='{link}'>电脑端链接</a>"
+            
+            # 构建请求负载
+            telegram_payload = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "text": telegram_message,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": False
+            }
+            
+            headers = {"Content-Type": "application/json"}
+            loop = asyncio.get_running_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.post(
+                    telegram_api_url,
+                    json=telegram_payload,
+                    headers=headers,
+                    timeout=10
+                )
+            )
+            response.raise_for_status()
+            result = response.json()
+            if result.get("ok"):
+                safe_print("   -> Telegram 通知发送成功。")
+            else:
+                safe_print(f"   -> Telegram 通知发送失败: {result.get('description', '未知错误')}")
+        except requests.exceptions.RequestException as e:
+            safe_print(f"   -> 发送 Telegram 通知失败: {e}")
+        except Exception as e:
+            safe_print(f"   -> 发送 Telegram 通知时发生未知错误: {e}")
 
     # --- 发送通用 Webhook 通知 ---
     if WEBHOOK_URL:
@@ -503,21 +556,21 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
         # 创建logs文件夹
         logs_dir = "logs"
         os.makedirs(logs_dir, exist_ok=True)
-        
+
         # 生成日志文件名（当前时间）
         current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_filename = f"{current_time}.log"
         log_filepath = os.path.join(logs_dir, log_filename)
-        
+
         # 准备日志内容 - 直接保存原始传输内容
         log_content = json.dumps(messages, ensure_ascii=False)
-        
+
         # 写入日志文件
         with open(log_filepath, 'w', encoding='utf-8') as f:
             f.write(log_content)
-        
+
         safe_print(f"   [日志] AI分析请求已保存到: {log_filepath}")
-        
+
     except Exception as e:
         safe_print(f"   [日志] 保存AI分析日志时出错: {e}")
 
@@ -527,13 +580,23 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
         try:
             # 根据重试次数调整参数
             current_temperature = 0.1 if attempt == 0 else 0.05  # 重试时使用更低的温度
+
+            from src.config import get_ai_request_params
+            
+            # 构建请求参数，根据ENABLE_RESPONSE_FORMAT决定是否使用response_format
+            request_params = {
+                "model": MODEL_NAME,
+                "messages": messages,
+                "temperature": current_temperature,
+                "max_tokens": 4000
+            }
+            
+            # 只有启用response_format时才添加该参数
+            if ENABLE_RESPONSE_FORMAT:
+                request_params["response_format"] = {"type": "json_object"}
             
             response = await client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=messages,
-                response_format={"type": "json_object"},
-                temperature=current_temperature,
-                max_tokens=4000,
+                **get_ai_request_params(**request_params)
             )
 
             ai_response_content = response.choices[0].message.content
@@ -547,7 +610,7 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
             # 尝试直接解析JSON
             try:
                 parsed_response = json.loads(ai_response_content)
-                
+
                 # 验证响应格式
                 if validate_ai_response_format(parsed_response):
                     safe_print(f"   [AI分析] 第{attempt + 1}次尝试成功，响应格式验证通过")
@@ -560,10 +623,10 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
                     else:
                         safe_print("   [AI分析] 所有重试完成，使用最后一次结果")
                         return parsed_response
-                        
+
             except json.JSONDecodeError:
                 safe_print(f"   [AI分析] 第{attempt + 1}次尝试JSON解析失败，尝试清理响应内容...")
-                
+
                 # 清理可能的Markdown代码块标记
                 cleaned_content = ai_response_content.strip()
                 if cleaned_content.startswith('```json'):
@@ -573,11 +636,11 @@ async def get_ai_analysis(product_data, image_paths=None, prompt_text=""):
                 if cleaned_content.endswith('```'):
                     cleaned_content = cleaned_content[:-3]
                 cleaned_content = cleaned_content.strip()
-                
+
                 # 寻找JSON对象边界
                 json_start_index = cleaned_content.find('{')
                 json_end_index = cleaned_content.rfind('}')
-                
+
                 if json_start_index != -1 and json_end_index != -1 and json_end_index > json_start_index:
                     json_str = cleaned_content[json_start_index:json_end_index + 1]
                     try:

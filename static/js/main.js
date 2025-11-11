@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function() {
     const mainContent = document.getElementById('main-content');
     const navLinks = document.querySelectorAll('.nav-link');
     let logRefreshInterval = null;
@@ -484,6 +484,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 </div>
                 
                 <div class="form-group">
+                    <label for="telegram-bot-token">Telegram Bot Token</label>
+                    <input type="text" id="telegram-bot-token" name="TELEGRAM_BOT_TOKEN" value="${settings.TELEGRAM_BOT_TOKEN || ''}" placeholder="例如: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz123456789">
+                    <p class="form-hint">Telegram 机器人的 Token，从 @BotFather 获取</p>
+                </div>
+                
+                <div class="form-group">
+                    <label for="telegram-chat-id">Telegram Chat ID</label>
+                    <input type="text" id="telegram-chat-id" name="TELEGRAM_CHAT_ID" value="${settings.TELEGRAM_CHAT_ID || ''}" placeholder="例如: 123456789">
+                    <p class="form-hint">Telegram Chat ID，从 @userinfobot 获取</p>
+                </div>
+                
+                <div class="form-group">
                     <label for="webhook-url">通用 Webhook URL</label>
                     <input type="text" id="webhook-url" name="WEBHOOK_URL" value="${settings.WEBHOOK_URL || ''}" placeholder="例如: https://your-webhook-url.com/endpoint">
                     <p class="form-hint">通用 Webhook 的 URL 地址</p>
@@ -682,6 +694,8 @@ document.addEventListener('DOMContentLoaded', function () {
             return '<p>没有找到任何任务。请点击右上角“创建新任务”来添加一个。</p>';
         }
 
+        const refreshBtn = '<svg class="icon" viewBox="0 0 1025 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"  width="16" height="16"><path d="M914.17946 324.34283C854.308387 324.325508 750.895846 324.317788 750.895846 324.317788 732.045471 324.317788 716.764213 339.599801 716.764213 358.451121 716.764213 377.30244 732.045471 392.584453 750.895846 392.584453L955.787864 392.584453C993.448095 392.584453 1024 362.040424 1024 324.368908L1024 119.466667C1024 100.615347 1008.718742 85.333333 989.868367 85.333333 971.017993 85.333333 955.736735 100.615347 955.736735 119.466667L955.736735 256.497996C933.314348 217.628194 905.827487 181.795372 873.995034 149.961328 778.623011 54.584531 649.577119 0 511.974435 0 229.218763 0 0 229.230209 0 512 0 794.769791 229.218763 1024 511.974435 1024 794.730125 1024 1023.948888 794.769791 1023.948888 512 1023.948888 493.148681 1008.66763 477.866667 989.817256 477.866667 970.966881 477.866667 955.685623 493.148681 955.685623 512 955.685623 757.067153 757.029358 955.733333 511.974435 955.733333 266.91953 955.733333 68.263265 757.067153 68.263265 512 68.263265 266.932847 266.91953 68.266667 511.974435 68.266667 631.286484 68.266667 743.028524 115.531923 825.725634 198.233152 862.329644 234.839003 892.298522 277.528256 914.17946 324.34283L914.17946 324.34283Z" fill="#389BFF"></path></svg>'
+
         const tableHeader = `
             <thead>
                 <tr>
@@ -722,7 +736,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <td>${task.min_price || '不限'} - ${task.max_price || '不限'}</td>
                 <td>${task.personal_only ? '<span class="tag personal">个人闲置</span>' : ''}</td>
                 <td>${task.max_pages || 3}</td>
-                <td>${(task.ai_prompt_criteria_file || 'N/A').replace('prompts/', '')}</td>
+                <td><div class="criteria"><button class="refresh-criteria" title="重新生成AI标准" data-task-id="${task.id}">${refreshBtn}</button>${(task.ai_prompt_criteria_file || 'N/A').replace('prompts/', '')}</div></td>
                 <td>${task.cron || '未设置'}</td>
                 <td>
                     ${actionButton}
@@ -850,6 +864,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         await updateLogs(true);
+        autoRefreshCheckbox.click(); // Enable auto-refresh by default
     }
 
     async function fetchAndRenderResults() {
@@ -907,7 +922,7 @@ document.addEventListener('DOMContentLoaded', function () {
             sortBySelector.addEventListener('change', fetchAndRenderResults);
             sortOrderSelector.addEventListener('change', fetchAndRenderResults);
             refreshBtn.addEventListener('click', fetchAndRenderResults);
-            
+
             // Enable delete button when a file is selected
             const updateDeleteButtonState = () => {
                 deleteBtn.disabled = !selector.value;
@@ -915,7 +930,7 @@ document.addEventListener('DOMContentLoaded', function () {
             selector.addEventListener('change', updateDeleteButtonState);
             // 初始化时也更新一次删除按钮状态
             updateDeleteButtonState();
-            
+
             // Delete button functionality
             deleteBtn.addEventListener('click', async () => {
                 const selectedFile = selector.value;
@@ -923,7 +938,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     alert('请先选择一个结果文件。');
                     return;
                 }
-                
+
                 if (confirm(`你确定要删除结果文件 "${selectedFile}" 吗？此操作不可恢复。`)) {
                     const result = await deleteResultFile(selectedFile);
                     if (result) {
@@ -933,7 +948,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     }
                 }
             });
-            
+
             // Initial load
             await fetchAndRenderResults();
         } else {
@@ -966,7 +981,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 <p>正在加载AI配置...</p>
             </div>
         `;
-        
+
         // Insert AI settings card before Prompt Management
         const promptCard = document.querySelector('.settings-card h3').closest('.settings-card');
         promptCard.parentNode.insertBefore(aiContainer, promptCard);
@@ -1041,11 +1056,11 @@ document.addEventListener('DOMContentLoaded', function () {
         if (notificationForm) {
             notificationForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                
+
                 // Collect form data
                 const formData = new FormData(notificationForm);
                 const settings = {};
-                
+
                 // Handle regular inputs
                 for (let [key, value] of formData.entries()) {
                     if (key === 'PCURL_TO_MOBILE') {
@@ -1054,24 +1069,24 @@ document.addEventListener('DOMContentLoaded', function () {
                         settings[key] = value || '';
                     }
                 }
-                
+
                 // Handle unchecked checkboxes (they don't appear in FormData)
                 const pcurlCheckbox = document.getElementById('pcurl-to-mobile');
                 if (pcurlCheckbox && !pcurlCheckbox.checked) {
                     settings.PCURL_TO_MOBILE = false;
                 }
-                
+
                 // Save settings
                 const saveBtn = notificationForm.querySelector('button[type="submit"]');
                 const originalText = saveBtn.textContent;
                 saveBtn.disabled = true;
                 saveBtn.textContent = '保存中...';
-                
+
                 const result = await updateNotificationSettings(settings);
                 if (result) {
                     alert(result.message || "通知设置已保存！");
                 }
-                
+
                 saveBtn.disabled = false;
                 saveBtn.textContent = originalText;
             });
@@ -1082,27 +1097,27 @@ document.addEventListener('DOMContentLoaded', function () {
         if (aiForm) {
             aiForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
-                
+
                 // Collect form data
                 const formData = new FormData(aiForm);
                 const settings = {};
-                
+
                 // Handle regular inputs
                 for (let [key, value] of formData.entries()) {
                     settings[key] = value || '';
                 }
-                
+
                 // Save settings
                 const saveBtn = aiForm.querySelector('button[type="submit"]');
                 const originalText = saveBtn.textContent;
                 saveBtn.disabled = true;
                 saveBtn.textContent = '保存中...';
-                
+
                 const result = await updateAISettings(settings);
                 if (result) {
                     alert(result.message || "AI设置已保存！");
                 }
-                
+
                 saveBtn.disabled = false;
                 saveBtn.textContent = originalText;
             });
@@ -1114,17 +1129,17 @@ document.addEventListener('DOMContentLoaded', function () {
                     // Collect form data
                     const formData = new FormData(aiForm);
                     const settings = {};
-                    
+
                     // Handle regular inputs
                     for (let [key, value] of formData.entries()) {
                         settings[key] = value || '';
                     }
-                    
+
                     // Test settings
                     const originalText = testBtn.textContent;
                     testBtn.disabled = true;
                     testBtn.textContent = '测试中...';
-                    
+
                     const result = await testAISettings(settings);
                     if (result) {
                         if (result.success) {
@@ -1133,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             alert("浏览器测试失败: " + result.message);
                         }
                     }
-                    
+
                     testBtn.disabled = false;
                     testBtn.textContent = originalText;
                 });
@@ -1147,7 +1162,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     const originalText = testBackendBtn.textContent;
                     testBackendBtn.disabled = true;
                     testBackendBtn.textContent = '测试中...';
-                    
+
                     try {
                         const response = await fetch('/api/settings/ai/test/backend', {
                             method: 'POST',
@@ -1155,11 +1170,11 @@ document.addEventListener('DOMContentLoaded', function () {
                                 'Content-Type': 'application/json',
                             },
                         });
-                        
+
                         if (!response.ok) {
                             throw new Error('后端测试请求失败');
                         }
-                        
+
                         const result = await response.json();
                         if (result.success) {
                             alert(result.message || "后端AI模型连接测试成功！");
@@ -1169,7 +1184,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     } catch (error) {
                         alert("后端容器测试错误: " + error.message);
                     }
-                    
+
                     testBackendBtn.disabled = false;
                     testBackendBtn.textContent = originalText;
                 });
@@ -1179,7 +1194,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Handle navigation clicks
     navLinks.forEach(link => {
-        link.addEventListener('click', function (e) {
+        link.addEventListener('click', function(e) {
             e.preventDefault();
             const hash = this.getAttribute('href');
             if (window.location.hash !== hash) {
@@ -1229,6 +1244,10 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('tasks-table-container').innerHTML = renderTasksTable(tasks);
         } else if (button.matches('.edit-btn')) {
             const taskData = JSON.parse(row.dataset.task);
+            const isRunning = taskData.is_running === true;
+            const statusBadge = isRunning
+                ? `<span class="status-badge status-running">运行中</span>`
+                : `<span class="status-badge status-stopped">已停止</span>`;
 
             row.classList.add('editing');
             row.innerHTML = `
@@ -1239,6 +1258,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     </label>
                 </td>
                 <td><input type="text" value="${taskData.task_name}" data-field="task_name"></td>
+                <td>${statusBadge}</td>
                 <td><input type="text" value="${taskData.keyword}" data-field="keyword"></td>
                 <td>
                     <input type="text" value="${taskData.min_price || ''}" placeholder="不限" data-field="min_price" style="width: 60px;"> -
@@ -1306,6 +1326,14 @@ document.addEventListener('DOMContentLoaded', function () {
             const container = document.getElementById('tasks-table-container');
             const tasks = await fetchTasks();
             container.innerHTML = renderTasksTable(tasks);
+        } else if (button.matches('.refresh-criteria')) {
+            const task = JSON.parse(row.dataset.task);
+            const modal = document.getElementById('refresh-criteria-modal');
+            const textarea = document.getElementById('refresh-criteria-description');
+            textarea.value = task['description'] || '';
+            modal.dataset.taskId = taskId;
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('visible'), 10);
         }
     });
 
@@ -1342,9 +1370,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
         closeModalBtn.addEventListener('click', closeModal);
         cancelBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', (event) => {
+
+        let canClose = false;
+        modal.addEventListener('mousedown', event => {
+            canClose = event.target === modal;
+        });
+        modal.addEventListener('mouseup', (event) => {
             // Close if clicked on the overlay background
-            if (event.target === modal) {
+            if (canClose && event.target === modal) {
                 closeModal();
             }
         });
@@ -1391,6 +1424,65 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
         });
+    }
+
+    // --- refresh criteria Modal Logic ---
+    const refreshCriteriaModal = document.getElementById('refresh-criteria-modal');
+    if (refreshCriteriaModal) {
+        const form = document.getElementById('refresh-criteria-form');
+        const closeModalBtn = document.getElementById('close-refresh-criteria-btn');
+        const cancelBtn = document.getElementById('cancel-refresh-criteria-btn');
+        const refreshBtn = document.getElementById('refresh-criteria-btn');
+
+        const closeModal = () => {
+            refreshCriteriaModal.classList.remove('visible');
+            setTimeout(() => {
+                refreshCriteriaModal.style.display = 'none';
+                form.reset(); // Reset form on close
+            }, 300);
+        };
+
+        closeModalBtn.addEventListener('click', closeModal);
+        cancelBtn.addEventListener('click', closeModal);
+
+        let canClose = false;
+        refreshCriteriaModal.addEventListener('mousedown', event => {
+            canClose = event.target === refreshCriteriaModal;
+        });
+        refreshCriteriaModal.addEventListener('mouseup', (event) => {
+            // Close if clicked on the overlay background
+            if (canClose && event.target === refreshCriteriaModal) {
+                closeModal();
+            }
+        });
+
+        refreshBtn.addEventListener('click', async () => {
+            if (form.checkValidity() === false) {
+                form.reportValidity();
+                return;
+            }
+            const btnText = refreshBtn.querySelector('.btn-text');
+            const spinner = refreshBtn.querySelector('.spinner');
+
+            // Show loading state
+            btnText.style.display = 'none';
+            spinner.style.display = 'inline-block';
+            refreshBtn.disabled = true;
+
+            const taskId = refreshCriteriaModal.dataset.taskId
+            const formData = new FormData(form);
+            const result = await updateTask(taskId, {description: formData.get('description')});
+
+            // Hide loading state
+            btnText.style.display = 'inline-block';
+            spinner.style.display = 'none';
+            refreshBtn.disabled = false;
+
+            if (result && result.task) {
+                closeModal();
+            }
+        })
+
     }
 
 
