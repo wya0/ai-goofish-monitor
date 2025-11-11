@@ -30,7 +30,6 @@ jobs:
                   target_sync_branch: master
                   
                   test_mode: false
-                  exclude_paths: ".github/workflows/"
 
             - name: Check for new commits
               if: success()
@@ -46,6 +45,7 @@ jobs:
                   echo "Please check the logs and consider manual sync if needed."
 
                   exit 1
+
 
 
 
