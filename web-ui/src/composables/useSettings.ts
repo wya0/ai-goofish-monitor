@@ -1,10 +1,11 @@
 import { ref, onMounted } from 'vue'
 import * as settingsApi from '@/api/settings'
-import type { NotificationSettings, AiSettings, SystemStatus } from '@/api/settings'
+import type { NotificationSettings, AiSettings, RotationSettings, SystemStatus } from '@/api/settings'
 
 export function useSettings() {
   const notificationSettings = ref<NotificationSettings>({})
   const aiSettings = ref<AiSettings>({})
+  const rotationSettings = ref<RotationSettings>({})
   const systemStatus = ref<SystemStatus | null>(null)
   const isReady = ref(false)
   
@@ -16,13 +17,15 @@ export function useSettings() {
     isLoading.value = true
     error.value = null
     try {
-      const [notif, ai, status] = await Promise.all([
+      const [notif, ai, rotation, status] = await Promise.all([
         settingsApi.getNotificationSettings(),
         settingsApi.getAiSettings(),
+        settingsApi.getRotationSettings(),
         settingsApi.getSystemStatus()
       ])
       notificationSettings.value = notif
       aiSettings.value = ai
+      rotationSettings.value = rotation
       systemStatus.value = status
     } catch (e) {
       if (e instanceof Error) error.value = e
@@ -62,9 +65,31 @@ export function useSettings() {
   async function saveAiSettings() {
     isSaving.value = true
     try {
-      await settingsApi.updateAiSettings(aiSettings.value)
+      const payload = { ...aiSettings.value }
+      const apiKey = (payload.OPENAI_API_KEY || '').trim()
+      if (apiKey) {
+        payload.OPENAI_API_KEY = apiKey
+      } else {
+        delete payload.OPENAI_API_KEY
+      }
+      await settingsApi.updateAiSettings(payload)
+      if (aiSettings.value.OPENAI_API_KEY) {
+        aiSettings.value.OPENAI_API_KEY = ''
+      }
       // Refresh status
       systemStatus.value = await settingsApi.getSystemStatus()
+    } catch (e) {
+      if (e instanceof Error) error.value = e
+      throw e
+    } finally {
+      isSaving.value = false
+    }
+  }
+
+  async function saveRotationSettings() {
+    isSaving.value = true
+    try {
+      await settingsApi.updateRotationSettings(rotationSettings.value)
     } catch (e) {
       if (e instanceof Error) error.value = e
       throw e
@@ -76,7 +101,14 @@ export function useSettings() {
   async function testAiConnection() {
     isSaving.value = true
     try {
-      const res = await settingsApi.testAiSettings(aiSettings.value)
+      const payload = { ...aiSettings.value }
+      const apiKey = (payload.OPENAI_API_KEY || '').trim()
+      if (apiKey) {
+        payload.OPENAI_API_KEY = apiKey
+      } else {
+        delete payload.OPENAI_API_KEY
+      }
+      const res = await settingsApi.testAiSettings(payload)
       return res
     } catch (e) {
       if (e instanceof Error) error.value = e
@@ -91,6 +123,7 @@ export function useSettings() {
   return {
     notificationSettings,
     aiSettings,
+    rotationSettings,
     systemStatus,
     isLoading,
     isSaving,
@@ -99,6 +132,7 @@ export function useSettings() {
     fetchAll,
     saveNotificationSettings,
     saveAiSettings,
+    saveRotationSettings,
     testAiConnection,
     refreshStatus,
   }

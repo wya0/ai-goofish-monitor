@@ -4,11 +4,12 @@
 
 ## 核心特性
 
-- **Web 可视化管理**: 任务管理、AI 标准编辑、实时日志、结果浏览
+- **Web 可视化管理**: 任务管理、账号管理、AI 标准编辑、运行日志、结果浏览
 - **AI 驱动**: 自然语言创建任务，多模态模型深度分析商品
 - **多任务并发**: 独立配置关键词、价格、筛选条件和 AI Prompt
 - **即时通知**: 支持 ntfy.sh、企业微信、Bark、Telegram、Webhook
 - **定时调度**: Cron 表达式配置周期性任务
+- **账号与代理轮换**: 多账号管理、任务绑定账号、代理池轮换与失败重试
 - **Docker 部署**: 一键容器化部署
 
 ## 截图
@@ -21,13 +22,14 @@
 
 ### 环境准备
 
-**要求**: Python 3.10+ Vue3
+**要求**:
+- Python 3.10+
+- Node.js + npm（用于前端构建）
+- Playwright 浏览器依赖（未安装时执行 `playwright install chromium`）
 
 ```bash
 git clone https://github.com/Usagi-org/ai-goofish-monitor
 cd ai-goofish-monitor
-pip install -r requirements.txt
-playwright install chromium
 ```
 
 ### 配置
@@ -52,116 +54,87 @@ cp .env.example .env
 
 完整配置项参考 `.env.example`
 
-3. **获取登录状态**
-
-启动服务后，访问 Web UI → **登录页面** → **右上角-手动更新登录状态**，按提示使用 [Chrome 扩展](https://chromewebstore.google.com/detail/xianyu-login-state-extrac/eidlpfjiodpigmfcahkmlenhppfklcoa) 提取闲鱼Cookie。
-
-### 启动服务
+3. **启动服务**
 
 ```bash
 chmod +x start.sh && ./start.sh
 ```
 
-访问 `http://127.0.0.1:8000`，创建监控任务即可开始使用。
+start.sh 会自动完成依赖安装、前端构建与后端启动。
 
-## 🐳 Docker 部署 (推荐)
+4. **访问 Web UI**
+访问 `http://127.0.0.1:8000`，
+**登录默认密码(admin/admin123)** → **闲鱼账号管理**，按提示使用 [Chrome 扩展](https://chromewebstore.google.com/detail/xianyu-login-state-extrac/eidlpfjiodpigmfcahkmlenhppfklcoa) 提取并粘贴登录状态 JSON。
+账号会保存到 `state/` 目录（例如 `state/acc_1.json`）。随后在**任务管理**中选择绑定账号即可开始使用。
 
-使用 Docker 可以将应用及其所有依赖项打包到一个标准化的单元中，实现快速、可靠和一致的部署。
+## 🐳 Docker 部署
 
-### 第 1 步: 环境准备 (与本地部署类似)
+使用 `docker-compose.yaml` 一键启动，镜像已预置前端构建与运行环境。
 
-1. **安装 Docker**: 请确保你的系统已安装 [Docker Engine](https://docs.docker.com/engine/install/)。
-
-2. **克隆项目并配置**:
-
-    ```bash
-    git clone https://github.com/Usagi-org/ai-goofish-monitor
-    cd ai-goofish-monitor
-    ```
-
-3. **创建 `.env` 文件**: 参考 **[快速开始](#快速开始)** 部分的说明，在项目根目录创建并填写 `.env` 文件。
-
-4. **获取登录状态 (关键步骤!)**: Docker容器内无法进行扫码登录。请在**启动容器后**，通过访问Web UI来设置登录状态：
-    1. （在宿主机上）执行 `docker-compose up -d` 启动服务。
-    2. 在浏览器中打开 `http://127.0.0.1:8000` 访问Web UI。
-    3. 进入 **"系统设置"** 页面，点击 **"手动更新"** 按钮。
-    4. 按照弹窗内的指引操作：
-       - 在您的个人电脑上，使用Chrome浏览器安装[闲鱼登录状态提取扩展](https://chromewebstore.google.com/detail/xianyu-login-state-extrac/eidlpfjiodpigmfcahkmlenhppfklcoa)
-       - 打开并登录闲鱼官网
-       - 登录成功后，点击浏览器工具栏中的扩展图标
-       - 点击"提取登录状态"按钮获取登录信息
-       - 点击"复制到剪贴板"按钮
-       - 将复制的内容粘贴到Web UI中保存即可
-
-> ℹ️ **关于Python版本**: 使用Docker部署时，项目使用的是Dockerfile中指定的Python 3.11版本，无需担心本地Python版本兼容性问题。
-
-### 第 2 步: 运行 Docker 容器
-
-项目已包含 `docker-compose.yaml` 文件，我们推荐使用 `docker-compose` 来管理容器，这比使用 `docker run` 更方便。
-
-在项目根目录下，运行以下命令来启动容器：
+### 1) 准备
 
 ```bash
-docker-compose up --build -d
+cp .env.example .env
 ```
 
-这会以后台模式启动服务。`docker-compose` 会自动读取 `.env` 文件和 `docker-compose.yaml` 的配置，并根据其内容来创建和启动容器。
+### 2) 启动
 
-如果容器内遇到网络问题，请自行排查或使用代理。
+```bash
+docker compose up -d
+```
 
-> ⚠️ **OpenWrt 环境部署注意事项**: 如果您在 OpenWrt 路由器上部署此应用，可能会遇到 DNS 解析问题。这是因为 Docker Compose 创建的默认网络可能无法正确继承 OpenWrt 的 DNS 设置。如果遇到 `ERR_CONNECTION_REFUSED` 错误，请检查您的容器网络配置，可能需要手动配置 DNS 或调整网络模式以确保容器可以正常访问外部网络。
+### 3) 访问与管理
 
-### 第 3 步: 访问和管理
+- **访问 Web UI**: `http://127.0.0.1:8000`
+- **查看日志**: `docker compose logs -f app`
+- **停止服务**: `docker compose down`
+账号状态默认保存在容器内 `/app/state`，如需持久化可在 compose 中添加挂载 `./state:/app/state`。
 
-- **访问 Web UI**: 在浏览器中打开 `http://127.0.0.1:8000`。
-- **查看实时日志**: `docker-compose logs -f`
-- **停止容器**: `docker-compose stop`
-- **启动已停止的容器**: `docker-compose start`
-- **停止并移除容器**: `docker-compose down`
+### 4) 更新镜像
+
+```bash
+docker compose pull
+docker compose up -d
+```
 
 ## Web UI 功能一览
 
 <details>
 <summary>点击展开 Web UI 功能详情</summary>
 
-- **任务管理**:
-  - **AI创建任务**: 使用自然语言描述需求，一键生成监控任务和配套AI分析标准。
-  - **可视化编辑与控制**: 在表格中直接修改任务参数（如关键词、价格、定时规则等），并能独立启/停、删除每个任务。
-  - **定时调度**: 为任务配置 Cron 表达式，实现自动化周期性运行。
-- **结果查看**:
-  - **卡片式浏览**: 以图文卡片形式清晰展示每个符合条件的商品。
-  - **智能筛选与排序**: 可一键筛选出所有被AI标记为"推荐"的商品，并支持按爬取时间、发布时间、价格等多种方式排序。
-  - **深度详情**: 点击即可查看每个商品的完整抓取数据和AI分析的详细JSON结果。
-- **运行日志**:
-  - **实时日志流**: 在网页上实时查看爬虫运行的详细日志，方便追踪进度和排查问题。
-  - **日志管理**: 支持自动刷新、手动刷新和一键清空日志。
-- **系统设置**:
-  - **状态检查**: 一键检查 `.env` 配置、登录状态等关键依赖是否正常。
-  - **Prompt在线编辑**: 直接在网页上编辑和保存用于AI分析的 `prompt` 文件，实时调整AI的思考逻辑。
+- **任务管理**：AI 创建、参数编辑、任务调度、账号绑定
+- **闲鱼账号管理**：添加/更新/删除账号，导入登录状态 JSON
+- **结果查看**：卡片浏览、筛选排序、详情查看
+- **运行日志**：按任务分组、增量加载、自动刷新
+- **系统设置**：状态检查、Prompt 编辑、代理轮换
 
 </details>
 
 ## 🚀 工作流程
 
-下图描述了单个监控任务从启动到完成的核心处理逻辑。在实际使用中，`web_server.py` 会作为主服务，根据用户操作或定时调度来启动一个或多个这样的任务进程。
+下图描述了单个监控任务从启动到完成的核心处理逻辑。在实际使用中，`src.app` 会作为主服务，根据用户操作或定时调度来启动一个或多个任务进程。
 
 ```mermaid
 graph TD
-    A[启动监控任务] --> B[任务: 搜索商品];
-    B --> C{发现新商品?};
-    C -- 是 --> D[抓取商品详情 & 卖家信息];
-    D --> E[下载商品图片];
-    E --> F[调用AI进行分析];
-    F --> G{AI是否推荐?};
-    G -- 是 --> H[发送通知];
-    H --> I[保存记录到 JSONL];
-    G -- 否 --> I;
-    C -- 否 --> J[翻页/等待];
-    J --> B;
-    I --> C;
+    A[启动监控任务] --> B[选择账号/代理配置];
+    B --> C[任务: 搜索商品];
+    C --> D{发现新商品?};
+    D -- 是 --> E[抓取商品详情 & 卖家信息];
+    E --> F[下载商品图片];
+    F --> G[调用AI进行分析];
+    G --> H{AI是否推荐?};
+    H -- 是 --> I[发送通知];
+    H -- 否 --> J[保存记录到 JSONL];
+    I --> J;
+    D -- 否 --> K[翻页/等待];
+    K --> C;
+    J --> C;
+    C --> L{触发风控/异常?};
+    L -- 是 --> M[账号/代理轮换并重试];
+    M --> C;
 ```
 
-## Web界面认证
+## Web 界面认证
 
 <details>
 <summary>点击展开认证配置详情</summary>
@@ -227,7 +200,7 @@ WEB_PASSWORD=admin123
 
 以及感谢 [LinuxDo](https://linux.do/) 社区。
 
-以及感谢 ClaudeCode/Gemini 等模型/工具，解放双手 体验Vibe Coding的快乐。
+以及感谢 ClaudeCode/Gemini/Codex 等模型工具，解放双手 体验Vibe Coding的快乐。
 
 </details>
 
