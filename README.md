@@ -2,6 +2,10 @@
 
 基于 Playwright 和 AI 的闲鱼多任务实时监控工具，提供完整的 Web 管理界面。
 
+体验地址：[点我去在线体验](https://vphtcbiabwvs.ap-southeast-1.clawcloudrun.com)
+
+登录账密：admin/admin123
+
 ## 核心特性
 
 - **Web 可视化管理**: 任务管理、账号管理、AI 标准编辑、运行日志、结果浏览
@@ -72,10 +76,11 @@ start.sh 会自动完成依赖安装、前端构建与后端启动。
 
 使用 `docker-compose.yaml` 一键启动，镜像已预置前端构建与运行环境。
 
-### 1) 准备
+### 1) 准备(这一步可跳过，启动后在UI页面里也可以配置)
 
 ```bash
 cp .env.example .env
+vim .env
 ```
 
 ### 2) 启动

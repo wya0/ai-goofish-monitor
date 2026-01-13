@@ -2,12 +2,21 @@
 设置管理路由
 """
 import os
-from dotenv import load_dotenv
-from fastapi import APIRouter
-from pydantic import BaseModel
 from typing import Optional
+
+from dotenv import load_dotenv
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel
+
+from src.api.dependencies import get_process_service
 from src.infrastructure.config.env_manager import env_manager
-from src.infrastructure.config.settings import AISettings, notification_settings, scraper_settings, reload_settings
+from src.infrastructure.config.settings import (
+    AISettings,
+    notification_settings,
+    reload_settings,
+    scraper_settings,
+)
+from src.services.process_service import ProcessService
 
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -40,9 +49,19 @@ def _normalize_bool_value(value: bool) -> str:
 class NotificationSettingsModel(BaseModel):
     """通知设置模型"""
     NTFY_TOPIC_URL: Optional[str] = None
+    GOTIFY_URL: Optional[str] = None
+    GOTIFY_TOKEN: Optional[str] = None
     BARK_URL: Optional[str] = None
+    WX_BOT_URL: Optional[str] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
+    WEBHOOK_URL: Optional[str] = None
+    WEBHOOK_METHOD: Optional[str] = None
+    WEBHOOK_HEADERS: Optional[str] = None
+    WEBHOOK_CONTENT_TYPE: Optional[str] = None
+    WEBHOOK_QUERY_PARAMETERS: Optional[str] = None
+    WEBHOOK_BODY: Optional[str] = None
+    PCURL_TO_MOBILE: Optional[bool] = None
 
 
 class AISettingsModel(BaseModel):
@@ -67,9 +86,19 @@ async def get_notification_settings():
     """获取通知设置"""
     return {
         "NTFY_TOPIC_URL": env_manager.get_value("NTFY_TOPIC_URL", ""),
+        "GOTIFY_URL": env_manager.get_value("GOTIFY_URL", ""),
+        "GOTIFY_TOKEN": env_manager.get_value("GOTIFY_TOKEN", ""),
         "BARK_URL": env_manager.get_value("BARK_URL", ""),
+        "WX_BOT_URL": env_manager.get_value("WX_BOT_URL", ""),
         "TELEGRAM_BOT_TOKEN": env_manager.get_value("TELEGRAM_BOT_TOKEN", ""),
-        "TELEGRAM_CHAT_ID": env_manager.get_value("TELEGRAM_CHAT_ID", "")
+        "TELEGRAM_CHAT_ID": env_manager.get_value("TELEGRAM_CHAT_ID", ""),
+        "WEBHOOK_URL": env_manager.get_value("WEBHOOK_URL", ""),
+        "WEBHOOK_METHOD": env_manager.get_value("WEBHOOK_METHOD", "POST"),
+        "WEBHOOK_HEADERS": env_manager.get_value("WEBHOOK_HEADERS", ""),
+        "WEBHOOK_CONTENT_TYPE": env_manager.get_value("WEBHOOK_CONTENT_TYPE", "JSON"),
+        "WEBHOOK_QUERY_PARAMETERS": env_manager.get_value("WEBHOOK_QUERY_PARAMETERS", ""),
+        "WEBHOOK_BODY": env_manager.get_value("WEBHOOK_BODY", ""),
+        "PCURL_TO_MOBILE": _env_bool("PCURL_TO_MOBILE", True),
     }
 
 
@@ -78,7 +107,13 @@ async def update_notification_settings(
     settings: NotificationSettingsModel,
 ):
     """更新通知设置"""
-    updates = settings.dict(exclude_none=True)
+    updates = {}
+    payload = settings.dict(exclude_none=True)
+    for key, value in payload.items():
+        if isinstance(value, bool):
+            updates[key] = _normalize_bool_value(value)
+        else:
+            updates[key] = str(value)
     success = env_manager.update_values(updates)
     if success:
         _reload_env()
@@ -115,7 +150,9 @@ async def update_rotation_settings(
 
 
 @router.get("/status")
-async def get_system_status():
+async def get_system_status(
+    process_service: ProcessService = Depends(get_process_service),
+):
     """获取系统状态"""
     state_file = "xianyu_state.json"
     login_state_exists = os.path.exists(state_file)
@@ -130,11 +167,19 @@ async def get_system_status():
     ntfy_topic_url = env_manager.get_value("NTFY_TOPIC_URL", "")
 
     ai_settings = AISettings()
+    running_task_ids = [
+        task_id
+        for task_id, process in process_service.processes.items()
+        if process and process.returncode is None
+    ]
+
     return {
         "ai_configured": ai_settings.is_configured(),
         "notification_configured": notification_settings.has_any_notification_enabled(),
         "headless_mode": scraper_settings.run_headless,
         "running_in_docker": scraper_settings.running_in_docker,
+        "scraper_running": len(running_task_ids) > 0,
+        "running_task_ids": running_task_ids,
         "login_state_file": {
             "exists": login_state_exists,
             "path": state_file
