@@ -34,8 +34,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 # 新增环境变量，用于区分Docker环境和本地环境
 ENV RUNNING_IN_DOCKER=true
-# 告知 Playwright 在哪里找到浏览器
-ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
+# 告知 Playwright 在哪里找到浏览器（使用独立目录，避免 root/appuser 主目录差异）
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # 设置时区为中国时区
 ENV TZ=Asia/Shanghai
 
@@ -56,11 +56,9 @@ RUN apt-get update \
         netcat-openbsd \
         telnet \
     && playwright install-deps chromium \
+    && playwright install chromium \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
-# 从 builder 阶段复制预先下载好的浏览器
-COPY --from=builder /root/.cache/ms-playwright /root/.cache/ms-playwright
 
 # 复制前端构建产物到 /app/dist
 COPY --from=frontend-builder /web-ui/dist /app/dist
@@ -74,10 +72,14 @@ EXPOSE 8000
 
 # 创建非 root 用户并设置目录权限
 RUN useradd -m -s /bin/bash appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app /ms-playwright
 
-# 切换到非 root 用户
-USER appuser
+# 注意：运行时会挂载宿主机目录（prompts/jsonl/logs/images），
+# 在不同主机上这些目录可能由 root 或其他 UID 创建。
+# 若容器以内置 appuser 运行，常见场景会出现写入权限错误（Errno 13）。
+# 为保证开箱即用与历史行为一致，这里保持 root 运行主进程。
+# 如需非 root 运行，请在部署侧统一处理宿主机目录 UID/GID。
+USER root
 
 # 使用 tini 作为 init，负责回收孤儿子进程
 ENTRYPOINT ["tini", "--"]
