@@ -7,9 +7,11 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import TaskRegionSelector from '@/components/tasks/TaskRegionSelector.vue'
 
 type FormMode = 'create' | 'edit'
 type EmittedData = TaskGenerateRequest | Partial<Task>
+const AUTO_ACCOUNT_VALUE = '__auto__'
 
 const props = defineProps<{
   mode: FormMode
@@ -46,7 +48,8 @@ watchEffect(() => {
   if (props.mode === 'edit' && props.initialData) {
     form.value = {
       ...props.initialData,
-      account_state_file: props.initialData.account_state_file || '',
+      account_state_file: props.initialData.account_state_file || AUTO_ACCOUNT_VALUE,
+      analyze_images: props.initialData.analyze_images ?? true,
       free_shipping: props.initialData.free_shipping ?? true,
       new_publish_option: props.initialData.new_publish_option || '__none__',
       region: props.initialData.region || '',
@@ -58,12 +61,13 @@ watchEffect(() => {
       task_name: '',
       keyword: '',
       description: '',
+      analyze_images: true,
       max_pages: 3,
       personal_only: true,
       min_price: undefined,
       max_price: undefined,
       cron: '',
-      account_state_file: props.defaultAccount || '',
+      account_state_file: props.defaultAccount || AUTO_ACCOUNT_VALUE,
       free_shipping: true,
       new_publish_option: '__none__',
       region: '',
@@ -106,7 +110,7 @@ function handleSubmit() {
   // Filter out fields that shouldn't be sent in update requests
   const { id, is_running, ...submitData } = form.value as any
 
-  if (submitData.account_state_file === '') {
+  if (submitData.account_state_file === AUTO_ACCOUNT_VALUE) {
     submitData.account_state_file = null
   }
 
@@ -125,6 +129,7 @@ function handleSubmit() {
   }
 
   submitData.decision_mode = decisionMode
+  submitData.analyze_images = submitData.analyze_images !== false
   submitData.keyword_rules = decisionMode === 'keyword' ? keywordRules : []
   if (decisionMode === 'keyword' && !submitData.description) {
     submitData.description = ''
@@ -172,6 +177,15 @@ function handleSubmit() {
           </p>
         </div>
       </div>
+      <div v-if="form.decision_mode === 'ai'" class="grid grid-cols-4 items-center gap-4">
+        <Label for="analyze-images" class="text-right">分析商品图片</Label>
+        <div class="col-span-3 space-y-1">
+          <Switch id="analyze-images" v-model="form.analyze_images" />
+          <p class="text-xs text-gray-500">
+            关闭后只分析商品文字描述和卖家资质，适合纯文本模型或节省 token。
+          </p>
+        </div>
+      </div>
 
       <div v-if="form.decision_mode === 'keyword'" class="grid grid-cols-4 gap-4">
         <Label class="text-right pt-2">关键词规则</Label>
@@ -211,7 +225,7 @@ function handleSubmit() {
               <SelectValue placeholder="未绑定（自动选择）" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">未绑定（自动选择）</SelectItem>
+              <SelectItem :value="AUTO_ACCOUNT_VALUE">未绑定（自动选择）</SelectItem>
               <SelectItem v-for="account in accountOptions || []" :key="account.path" :value="account.path">
                 {{ account.name }}
               </SelectItem>
@@ -248,10 +262,7 @@ function handleSubmit() {
       <div class="grid grid-cols-4 items-center gap-4">
         <Label class="text-right">区域筛选(默认不填)</Label>
         <div class="col-span-3 space-y-1">
-          <Input
-            v-model="form.region as any"
-            placeholder="例如： 浙江/杭州/滨江区 或 浙江/杭州/全杭州 或 上海/徐汇区"
-          />
+          <TaskRegionSelector v-model="form.region as any" />
           <p class="text-xs text-gray-500">区域筛选会导致满足条件的商品数量很少</p>
         </div>
       </div>
