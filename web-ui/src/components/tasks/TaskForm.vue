@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watchEffect } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { Task, TaskGenerateRequest } from '@/types/task.d.ts'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -7,11 +7,13 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import TaskRegionSelector from '@/components/tasks/TaskRegionSelector.vue'
 
 type FormMode = 'create' | 'edit'
 type EmittedData = TaskGenerateRequest | Partial<Task>
 const AUTO_ACCOUNT_VALUE = '__auto__'
+const EMPTY_CRON_VALUE = '__manual__'
 
 const props = defineProps<{
   mode: FormMode
@@ -26,7 +28,46 @@ const emit = defineEmits<{
 }>()
 
 const form = ref<any>({})
+const accountStrategy = ref<'auto' | 'fixed' | 'rotate'>('auto')
+const selectedAccountStateFile = ref(AUTO_ACCOUNT_VALUE)
 const keywordRulesInput = ref('')
+const cronMode = ref<'preset' | 'custom'>('preset')
+
+// 常用 cron 预设选项
+const cronPresets = [
+  { value: EMPTY_CRON_VALUE, label: '不定时（手动运行）' },
+  { value: '*/5 * * * *', label: '每 5 分钟' },
+  { value: '*/15 * * * *', label: '每 15 分钟' },
+  { value: '*/30 * * * *', label: '每 30 分钟' },
+  { value: '0 * * * *', label: '每小时' },
+  { value: '0 */2 * * *', label: '每 2 小时' },
+  { value: '0 */6 * * *', label: '每 6 小时' },
+  { value: '0 8 * * *', label: '每天 8:00' },
+  { value: '0 12 * * *', label: '每天 12:00' },
+  { value: '0 18 * * *', label: '每天 18:00' },
+  { value: '0 20 * * *', label: '每天 20:00' },
+  { value: '0 8,12,18 * * *', label: '每天 8:00/12:00/18:00' },
+  { value: '0 9 * * 1-5', label: '工作日 9:00' },
+  { value: '0 10 * * 6,0', label: '周末 10:00' },
+]
+
+// 判断 cron 值是否为预设值
+function isPresetCronValue(value: string): boolean {
+  if (!value) return true
+  return cronPresets.some(p => p.value === value)
+}
+
+// 判断当前 cron 是否为预设值
+const isPresetCron = computed(() => isPresetCronValue(form.value.cron))
+
+// 预设选择的值
+const presetCronValue = computed({
+  get: () => {
+    if (!isPresetCron.value) return EMPTY_CRON_VALUE
+    return form.value.cron || EMPTY_CRON_VALUE
+  },
+  set: (val: string) => { form.value.cron = val === EMPTY_CRON_VALUE ? '' : val },
+})
 const accountStrategyOptions = [
   { value: 'auto', label: '自动选择', description: '优先使用默认登录态；无默认时使用账号池。' },
   { value: 'fixed', label: '固定账号', description: '当前任务始终绑定一个指定账号。' },
@@ -50,7 +91,7 @@ function parseKeywordText(text: string): string[] {
   return deduped
 }
 
-watchEffect(() => {
+watch(() => [props.mode, props.initialData, props.defaultValues, props.defaultAccount], () => {
   const defaultValues = props.defaultValues || {}
   if (props.mode === 'edit' && props.initialData) {
     form.value = {
@@ -72,6 +113,9 @@ watchEffect(() => {
       decision_mode: defaultValues.decision_mode || props.initialData.decision_mode || 'ai',
     }
     keywordRulesInput.value = (defaultValues.keyword_rules || props.initialData.keyword_rules || []).join('\n')
+    // 编辑模式下，根据 cron 值判断模式
+    const cronVal = defaultValues.cron ?? props.initialData.cron ?? ''
+    cronMode.value = isPresetCronValue(cronVal) ? 'preset' : 'custom'
   } else {
     form.value = {
       task_name: '',
@@ -104,8 +148,38 @@ watchEffect(() => {
     if (defaultValues.keyword_rules && defaultValues.keyword_rules.length > 0) {
       keywordRulesInput.value = defaultValues.keyword_rules.join('\n')
     }
+    // 创建模式下，根据默认值判断模式
+    const cronVal = defaultValues.cron ?? ''
+    cronMode.value = isPresetCronValue(cronVal) ? 'preset' : 'custom'
   }
+
+  accountStrategy.value = form.value.account_strategy || (props.defaultAccount ? 'fixed' : 'auto')
+  selectedAccountStateFile.value =
+    form.value.account_state_file || props.defaultAccount || AUTO_ACCOUNT_VALUE
+}, { immediate: true, deep: true })
+
+watch(accountStrategy, (value) => {
+  form.value.account_strategy = value
+  if (value === 'fixed') {
+    form.value.account_state_file = selectedAccountStateFile.value || props.defaultAccount || AUTO_ACCOUNT_VALUE
+    return
+  }
+  form.value.account_state_file = null
 })
+
+watch(selectedAccountStateFile, (value) => {
+  if (accountStrategy.value !== 'fixed') return
+  form.value.account_state_file = value || props.defaultAccount || AUTO_ACCOUNT_VALUE
+})
+
+function handleAccountStrategyChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as 'auto' | 'fixed' | 'rotate'
+  accountStrategy.value = value
+}
+
+function handleAccountStateFileChange(event: Event) {
+  selectedAccountStateFile.value = (event.target as HTMLSelectElement).value || AUTO_ACCOUNT_VALUE
+}
 
 function handleSubmit() {
   if (!form.value.task_name || !form.value.keyword) {
@@ -139,9 +213,10 @@ function handleSubmit() {
 
   // Filter out fields that shouldn't be sent in update requests
   const { id, is_running, ...submitData } = form.value as any
-  const accountStrategy = submitData.account_strategy || 'auto'
-  if (accountStrategy === 'fixed') {
-    if (!submitData.account_state_file || submitData.account_state_file === AUTO_ACCOUNT_VALUE) {
+  const currentAccountStrategy = accountStrategy.value || 'auto'
+  if (currentAccountStrategy === 'fixed') {
+    const currentAccountStateFile = selectedAccountStateFile.value || AUTO_ACCOUNT_VALUE
+    if (currentAccountStateFile === AUTO_ACCOUNT_VALUE) {
       toast({
         title: '账号策略不完整',
         description: '固定账号模式下必须选择一个账号。',
@@ -149,6 +224,7 @@ function handleSubmit() {
       })
       return
     }
+    submitData.account_state_file = currentAccountStateFile
   } else {
     submitData.account_state_file = null
   }
@@ -168,7 +244,7 @@ function handleSubmit() {
   }
 
   submitData.decision_mode = decisionMode
-  submitData.account_strategy = accountStrategy
+  submitData.account_strategy = currentAccountStrategy
   submitData.analyze_images = submitData.analyze_images !== false
   submitData.keyword_rules = decisionMode === 'keyword' ? keywordRules : []
   if (decisionMode === 'keyword' && !submitData.description) {
@@ -255,39 +331,67 @@ function handleSubmit() {
       </div>
       <div class="grid grid-cols-4 items-center gap-4">
         <Label for="cron" class="text-right">定时规则</Label>
-        <Input id="cron" v-model="form.cron as any" class="col-span-3" placeholder="分 时 日 月 周 (例如: 0 8 * * *)" />
+        <div class="col-span-3 space-y-2">
+          <Tabs v-model="cronMode" class="w-full">
+            <TabsList class="grid w-full grid-cols-2">
+              <TabsTrigger value="preset">预设</TabsTrigger>
+              <TabsTrigger value="custom">自定义</TabsTrigger>
+            </TabsList>
+            <TabsContent value="preset">
+              <Select v-model="presetCronValue">
+                <SelectTrigger>
+                  <SelectValue placeholder="选择定时规则" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem v-for="preset in cronPresets" :key="preset.value" :value="preset.value">
+                    {{ preset.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </TabsContent>
+            <TabsContent value="custom">
+              <Input
+                id="cron"
+                v-model="form.cron"
+                placeholder="分 时 日 月 周 (例如: 0 8 * * *)"
+              />
+              <p class="text-xs text-gray-500 mt-1">
+                Cron 格式：分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-6)
+              </p>
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
       <div class="grid grid-cols-4 items-center gap-4">
         <Label class="text-right">账号策略</Label>
         <div class="col-span-3 space-y-2">
-          <Select v-model="form.account_strategy">
-            <SelectTrigger>
-              <SelectValue placeholder="请选择账号策略" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="option in accountStrategyOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <select
+            :value="accountStrategy"
+            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            @change="handleAccountStrategyChange"
+          >
+            <option v-for="option in accountStrategyOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
           <p class="text-xs text-gray-500">
-            {{ accountStrategyOptions.find((option) => option.value === form.account_strategy)?.description }}
+            {{ accountStrategyOptions.find((option) => option.value === accountStrategy)?.description }}
           </p>
         </div>
       </div>
-      <div v-if="form.account_strategy === 'fixed'" class="grid grid-cols-4 items-center gap-4">
+      <div v-if="accountStrategy === 'fixed'" class="grid grid-cols-4 items-center gap-4">
         <Label class="text-right">指定账号</Label>
         <div class="col-span-3">
-          <Select v-model="form.account_state_file">
-            <SelectTrigger>
-              <SelectValue placeholder="请选择账号" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="account in accountOptions || []" :key="account.path" :value="account.path">
-                {{ account.name }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <select
+            :value="selectedAccountStateFile"
+            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            @change="handleAccountStateFileChange"
+          >
+            <option :value="AUTO_ACCOUNT_VALUE">请选择账号</option>
+            <option v-for="account in accountOptions || []" :key="account.path" :value="account.path">
+              {{ account.name }}
+            </option>
+          </select>
         </div>
       </div>
       <div class="grid grid-cols-4 items-center gap-4">
