@@ -16,9 +16,13 @@ from src.ai_message_builder import (
 from src.infrastructure.config.settings import AISettings
 from src.infrastructure.config.env_manager import env_manager
 from src.services.ai_request_compat import (
-    add_json_response_format,
-    is_response_format_unsupported_error,
+    add_json_text_format,
+    build_responses_input,
+    is_json_output_unsupported_error,
+    is_temperature_unsupported_error,
+    remove_temperature_param,
 )
+from src.services.ai_response_parser import extract_ai_response_content
 
 
 class AIClient:
@@ -122,16 +126,19 @@ class AIClient:
     async def _call_ai(self, messages: List[Dict]) -> str:
         """调用 AI API"""
         use_response_format = self.settings.enable_response_format
-        max_attempts = 2 if use_response_format else 1
+        use_temperature = True
+        max_attempts = 3
 
         for attempt in range(max_attempts):
             request_params = {
                 "model": self.settings.model_name,
-                "messages": messages,
+                "input": build_responses_input(messages),
                 "temperature": 0.1,
-                "max_tokens": 4000
+                "max_output_tokens": 4000,
             }
-            request_params = add_json_response_format(
+            if not use_temperature:
+                request_params = remove_temperature_param(request_params)
+            request_params = add_json_text_format(
                 request_params,
                 use_response_format,
             )
@@ -140,18 +147,22 @@ class AIClient:
                 request_params["extra_body"] = {"enable_thinking": False}
 
             try:
-                response = await self.client.chat.completions.create(**request_params)
+                response = await self.client.responses.create(**request_params)
             except Exception as exc:
-                if use_response_format and is_response_format_unsupported_error(exc):
+                changed = False
+                if use_response_format and is_json_output_unsupported_error(exc):
                     use_response_format = False
-                    print("当前模型不支持 response_format，正在自动重试并移除该参数")
-                    if attempt < max_attempts - 1:
-                        continue
+                    changed = True
+                    print("当前模型不支持结构化 JSON 输出，正在自动重试并移除该参数")
+                if use_temperature and is_temperature_unsupported_error(exc):
+                    use_temperature = False
+                    changed = True
+                    print("当前模型不支持 temperature 参数，正在自动重试并移除该参数")
+                if changed and attempt < max_attempts - 1:
+                    continue
                 raise
 
-            if hasattr(response, 'choices'):
-                return response.choices[0].message.content
-            return response
+            return extract_ai_response_content(response)
 
         raise RuntimeError("AI 调用在兼容性重试后仍未返回结果")
 
