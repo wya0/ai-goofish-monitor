@@ -5,9 +5,12 @@ from src.infrastructure.external.ai_client import AIClient
 from src.services.ai_request_compat import build_responses_input
 
 
-def _build_fake_client(create_impl):
-    responses = SimpleNamespace(create=create_impl)
-    return SimpleNamespace(responses=responses)
+def _build_fake_client(responses_create_impl, chat_create_impl=None):
+    responses = SimpleNamespace(create=responses_create_impl)
+    chat = SimpleNamespace(
+        completions=SimpleNamespace(create=chat_create_impl or responses_create_impl)
+    )
+    return SimpleNamespace(responses=responses, chat=chat)
 
 
 def test_build_messages_without_images_uses_text_only_content():
@@ -99,6 +102,48 @@ def test_call_ai_retries_without_structured_output_when_model_rejects_it():
     assert "text" not in request_history[1]
 
 
+def test_call_ai_falls_back_to_chat_completions_when_responses_api_is_missing():
+    client = AIClient.__new__(AIClient)
+    client.settings = SimpleNamespace(
+        model_name="fake-model",
+        enable_response_format=True,
+        enable_thinking=False,
+    )
+    request_history = []
+
+    async def fake_responses_create(**kwargs):
+        request_history.append(("responses", kwargs))
+        raise Exception("Error code: 404 - page not found")
+
+    async def fake_chat_create(**kwargs):
+        request_history.append(("chat", kwargs))
+        if len([item for item in request_history if item[0] == "chat"]) == 1:
+            raise Exception(
+                "Error code: 400 - {'error': {'code': 'InvalidParameter', "
+                "'message': 'The parameter `response_format.type` specified in "
+                "the request are not valid: `json_object` is not supported by "
+                "this model.', 'param': 'response_format.type'}}"
+            )
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content='{"ok":true}')
+                )
+            ]
+        )
+
+    client.client = _build_fake_client(fake_responses_create, fake_chat_create)
+
+    response = asyncio.run(client._call_ai([{"role": "user", "content": "hi"}]))
+
+    assert response == '{"ok":true}'
+    assert request_history[0][0] == "responses"
+    assert request_history[1][0] == "chat"
+    assert request_history[1][1]["response_format"]["type"] == "json_object"
+    assert request_history[2][0] == "chat"
+    assert "response_format" not in request_history[2][1]
+
+
 def test_call_ai_retries_without_temperature_when_gateway_rejects_it():
     client = AIClient.__new__(AIClient)
     client.settings = SimpleNamespace(
@@ -121,3 +166,14 @@ def test_call_ai_retries_without_temperature_when_gateway_rejects_it():
     assert response == '{"ok":true}'
     assert request_history[0]["temperature"] == 0.1
     assert "temperature" not in request_history[1]
+
+
+def test_parse_response_uses_first_json_object_when_response_contains_multiple_objects():
+    client = AIClient.__new__(AIClient)
+
+    result = client._parse_response("""```json
+{"ok": true, "reason": "first"}
+{"ok": false, "reason": "second"}
+```""")
+
+    assert result == {"ok": True, "reason": "first"}

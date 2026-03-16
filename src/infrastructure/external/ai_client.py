@@ -16,13 +16,17 @@ from src.ai_message_builder import (
 from src.infrastructure.config.settings import AISettings
 from src.infrastructure.config.env_manager import env_manager
 from src.services.ai_request_compat import (
-    add_json_text_format,
-    build_responses_input,
+    CHAT_COMPLETIONS_API_MODE,
+    RESPONSES_API_MODE,
+    build_ai_request_params,
+    create_ai_response_async,
     is_json_output_unsupported_error,
+    is_responses_api_unsupported_error,
     is_temperature_unsupported_error,
     remove_temperature_param,
 )
 from src.services.ai_response_parser import extract_ai_response_content
+from src.services.ai_response_parser import parse_ai_response_json
 
 
 class AIClient:
@@ -123,33 +127,51 @@ class AIClient:
         user_content = build_user_message_content(text_prompt, image_data_urls)
         return [{"role": "user", "content": user_content}]
 
-    async def _call_ai(self, messages: List[Dict]) -> str:
+    async def _call_ai(
+        self,
+        messages: List[Dict],
+        *,
+        temperature: float = 0.1,
+        max_output_tokens: int = 4000,
+        enable_json_output: Optional[bool] = None,
+    ) -> str:
         """调用 AI API"""
-        use_response_format = self.settings.enable_response_format
+        api_mode = RESPONSES_API_MODE
+        use_response_format = (
+            self.settings.enable_response_format
+            if enable_json_output is None
+            else enable_json_output
+        )
         use_temperature = True
-        max_attempts = 3
+        max_attempts = 4
 
         for attempt in range(max_attempts):
-            request_params = {
-                "model": self.settings.model_name,
-                "input": build_responses_input(messages),
-                "temperature": 0.1,
-                "max_output_tokens": 4000,
-            }
+            request_params = build_ai_request_params(
+                api_mode,
+                model=self.settings.model_name,
+                messages=messages,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
+                enable_json_output=use_response_format,
+            )
             if not use_temperature:
                 request_params = remove_temperature_param(request_params)
-            request_params = add_json_text_format(
-                request_params,
-                use_response_format,
-            )
 
             if self.settings.enable_thinking:
                 request_params["extra_body"] = {"enable_thinking": False}
 
             try:
-                response = await self.client.responses.create(**request_params)
+                response = await create_ai_response_async(
+                    self.client,
+                    api_mode,
+                    request_params,
+                )
             except Exception as exc:
                 changed = False
+                if api_mode == RESPONSES_API_MODE and is_responses_api_unsupported_error(exc):
+                    api_mode = CHAT_COMPLETIONS_API_MODE
+                    changed = True
+                    print("当前服务未实现 Responses API，正在自动回退到 Chat Completions API")
                 if use_response_format and is_json_output_unsupported_error(exc):
                     use_response_format = False
                     changed = True
@@ -169,28 +191,7 @@ class AIClient:
     def _parse_response(self, response_text: str) -> Optional[Dict]:
         """解析 AI 响应"""
         try:
-            # 直接解析 JSON
-            return json.loads(response_text)
+            return parse_ai_response_json(response_text)
         except json.JSONDecodeError:
-            # 清理 Markdown 代码块标记
-            cleaned = response_text.strip()
-            if cleaned.startswith('```json'):
-                cleaned = cleaned[7:]
-            if cleaned.startswith('```'):
-                cleaned = cleaned[3:]
-            if cleaned.endswith('```'):
-                cleaned = cleaned[:-3]
-            cleaned = cleaned.strip()
-
-            # 提取 JSON 对象
-            start = cleaned.find('{')
-            end = cleaned.rfind('}')
-            if start != -1 and end != -1 and end > start:
-                json_str = cleaned[start:end + 1]
-                try:
-                    return json.loads(json_str)
-                except json.JSONDecodeError:
-                    pass
-
             print(f"无法解析 AI 响应: {response_text[:100]}")
             return None
