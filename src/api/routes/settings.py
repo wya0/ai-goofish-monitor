@@ -20,6 +20,7 @@ from src.services.ai_request_compat import (
     RESPONSES_API_MODE,
     build_ai_request_params,
     create_ai_response_sync,
+    is_chat_completions_api_unsupported_error,
     is_responses_api_unsupported_error,
 )
 from src.services.ai_response_parser import extract_ai_response_content
@@ -77,6 +78,7 @@ class NotificationSettingsModel(BaseModel):
     WX_BOT_URL: Optional[str] = None
     TELEGRAM_BOT_TOKEN: Optional[str] = None
     TELEGRAM_CHAT_ID: Optional[str] = None
+    TELEGRAM_API_BASE_URL: Optional[str] = None
     WEBHOOK_URL: Optional[str] = None
     WEBHOOK_METHOD: Optional[str] = None
     WEBHOOK_HEADERS: Optional[str] = None
@@ -298,7 +300,7 @@ async def test_ai_settings(settings: dict):
         model_name = settings.get("OPENAI_MODEL_NAME", "")
         client = OpenAI(**client_params)
         messages = [{"role": "user", "content": AI_TEST_PROMPT}]
-        api_mode = RESPONSES_API_MODE
+        api_mode = CHAT_COMPLETIONS_API_MODE
 
         try:
             response = create_ai_response_sync(
@@ -312,9 +314,9 @@ async def test_ai_settings(settings: dict):
                 ),
             )
         except Exception as exc:
-            if not is_responses_api_unsupported_error(exc):
+            if not is_chat_completions_api_unsupported_error(exc):
                 raise
-            api_mode = CHAT_COMPLETIONS_API_MODE
+            api_mode = RESPONSES_API_MODE
             response = create_ai_response_sync(
                 client,
                 api_mode,
